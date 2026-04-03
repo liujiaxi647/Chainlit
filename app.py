@@ -33,7 +33,7 @@ async def main(message: cl.Message):
     await msg.send()
 
     response = client.models.generate_content_stream(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=history,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
