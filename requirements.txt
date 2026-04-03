@@ -1,2 +1,2 @@
 chainlit
-google-generativeai
+google-genai
