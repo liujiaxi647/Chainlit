@@ -27,26 +27,52 @@ async def main(message: cl.Message):
         ).send()
         return
 
-    history.append({"role": "user", "parts": [{"text": message.content}]})
+    history.append({
+        "role": "user",
+        "parts": [{"text": message.content}]
+    })
 
     msg = cl.Message(content="")
     await msg.send()
 
-    response = client.models.generate_content_stream(
-        model="gemini-2.5-flash",
-        contents=history,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            max_output_tokens=300,
+    full_text = ""
+    finish_reason = None
+
+    try:
+        response = client.models.generate_content_stream(
+            model="gemini-2.5-flash",
+            contents=history,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                max_output_tokens=500,
+            )
         )
-    )
 
-    for chunk in response:
-        if chunk.text:
-            await msg.stream_token(chunk.text)
+        for chunk in response:
+            if chunk.text:
+                full_text += chunk.text
+                await msg.stream_token(chunk.text)
 
-    await msg.update()
+            if getattr(chunk, "candidates", None):
+                for c in chunk.candidates:
+                    if getattr(c, "finish_reason", None):
+                        finish_reason = c.finish_reason
 
-    history.append({"role": "model", "parts": [{"text": msg.content}]})
+        msg.content = full_text if full_text else "[No text returned]"
+        await msg.update()
+
+        print("FINAL RESPONSE:", full_text)
+        print("FINISH REASON:", finish_reason)
+
+    except Exception as e:
+        msg.content = f"Error: {str(e)}"
+        await msg.update()
+        return
+
+    history.append({
+        "role": "model",
+        "parts": [{"text": full_text}]
+    })
+
     cl.user_session.set("history", history)
     cl.user_session.set("turn_count", turn_count + 1)
