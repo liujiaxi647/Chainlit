@@ -1,9 +1,8 @@
-import chainlit as cl
-from google import genai
-from google.genai import types
 import os
+import chainlit as cl
+from openai import OpenAI
 
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 SYSTEM_PROMPT = """You are a health behavior support assistant.
 Keep responses concise, under 150 words.
@@ -27,52 +26,38 @@ async def main(message: cl.Message):
         ).send()
         return
 
-    history.append({
-        "role": "user",
-        "parts": [{"text": message.content}]
-    })
+    history.append({"role": "user", "content": message.content})
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
 
     msg = cl.Message(content="")
     await msg.send()
 
     full_text = ""
-    finish_reason = None
 
     try:
-        response = client.models.generate_content_stream(
-            model="gemini-2.5-flash",
-            contents=history,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=500,
-            )
+        stream = client.chat.completions.create(
+            model="gpt-5.4",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=300,
+            stream=True,
         )
 
-        for chunk in response:
-            if chunk.text:
-                full_text += chunk.text
-                await msg.stream_token(chunk.text)
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                full_text += delta
+                await msg.stream_token(delta)
 
-            if getattr(chunk, "candidates", None):
-                for c in chunk.candidates:
-                    if getattr(c, "finish_reason", None):
-                        finish_reason = c.finish_reason
-
-        msg.content = full_text if full_text else "[No text returned]"
+        msg.content = full_text if full_text.strip() else "[No response returned]"
         await msg.update()
-
-        print("FINAL RESPONSE:", full_text)
-        print("FINISH REASON:", finish_reason)
 
     except Exception as e:
         msg.content = f"Error: {str(e)}"
         await msg.update()
         return
 
-    history.append({
-        "role": "model",
-        "parts": [{"text": full_text}]
-    })
-
+    history.append({"role": "assistant", "content": full_text})
     cl.user_session.set("history", history)
     cl.user_session.set("turn_count", turn_count + 1)
