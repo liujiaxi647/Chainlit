@@ -1,2 +1,4 @@
 chainlit
+openai
+anthropic
 google-genai
